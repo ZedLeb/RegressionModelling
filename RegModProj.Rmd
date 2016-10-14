@@ -1,0 +1,159 @@
+---
+title: "The Relationship of Transmission on Fuel Economy"
+author: "zedleb"
+date: "29 september 2016"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Summary
+This analysis of the [mtcars data set](https://stat.ethz.ch/R-manual/R-devel/library/datasets/html/mtcars.html) explores the relationships between certain variables and the reported miles-per-gallon (MPG) of various vehicles.
+We are specifically interested in the following two questions:
+
+> Is an automatic or manual transmission better for MPG?  
+> Quantify the MPG difference between automatic and manual transmissions
+
+## Executive Conclusions
+In general, manual transmission is considered more economical in terms of fuel consumption than automatic transmission.  When Simple Linear Regression is employed with **transmission** as the *only* explanatory variable, fuel consumption is increased by about 7.25 mpg for automatic transmission.  However, transmission alone explains only 34% of the variance in mpg.  The addition of confounders **weight** and **cylinder number** (selected via ANOVA), into the final model explains 84% of the variance in mpg.  Therefore, we can conclude that transmission alone is not sufficient to explain the difference in fuel economy of vehicles - the vehicle weight and number of cylinders must also be considered.
+
+## Exploratory Analysis
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, results='hide'}
+library(ggplot2)
+data(mtcars)
+dim(mtcars)
+
+mtcars$cyl  <- factor(mtcars$cyl)
+mtcars$vs   <- factor(mtcars$vs)
+mtcars$gear <- factor(mtcars$gear)
+mtcars$carb <- factor(mtcars$carb)
+mtcars$am   <- factor(mtcars$am)
+
+```
+
+
+### Best variables
+
+See Appendix 1: Exploratory Box Plot of MPG against transmission for a quick comparison of the variable of interest - there does appear to be a difference in fuel economy for the two types of transmission.
+
+However, since `mtcars` is a data frame with 11 variables.  We will run analysis of variance to guage the best variables to include in a model.
+```{r}
+
+bestVars <- aov(mpg ~ ., data = mtcars)
+summary(bestVars)
+```
+  
+  
+Looking for variables with p value **< 0.05** gives us:
+
+* cyl
+* disp
+* wt
+
+The relations between these variable and mpg can be seen in the pairs plot (Appendix 2: Exploratory pairs).  
+Both `wt` and `disp` have **strong negative** linear relationships with `mpg`
+
+
+```{r, echo=FALSE}
+cor_wt   <- noquote(paste("Correlation wt to mpg:", round(cor(mtcars$wt, mtcars$mpg),3)))
+cor_disp <- noquote(paste("Correlation disp to mpg:", round(cor(mtcars$disp, mtcars$mpg),3)))
+```
+
+* `r cor_wt`
+* `r cor_disp`
+
+```{r, echo=FALSE}
+mn_auto <- noquote(paste("Mean MPG for Automatic vehicles:", round(mean(mtcars$mpg[mtcars$am==0]), 3)))
+mn_manu <- noquote(paste("Mean MPG for Manual vehicles:", round(mean(mtcars$mpg[mtcars$am==1]), 3)))
+```
+* `r mn_auto` 
+* `r mn_manu`
+
+##Regression Analysis
+
+Our first model is the base model - using the variable `am` (transmission) as the explanatory variable.  
+
+```{r}
+base_mdl  <- lm(mpg ~ am, data = mtcars)
+coef(base_mdl)
+```
+
+This simple model would suggest that manual transmission increases `mpg`  by 7.25. 
+
+However, the Adjusted R-squared value is only 0.3385, which means the base model explains about 34% of the variance of the MPG variable. This low  value indicates that we need to add other variables to the model.
+
+Keeping the best variables selected in the exploratory analysis in mind, we will begin multiple model building with the full data set using all the variables available and try to find the best model fit.  For this we use the stepwise method - eliminating variables by both backward and forward selection methods by the AIC (Aikake Information Criterion) algorithm.
+
+We will then compare the best model with the base model using anova.  The full print out of results is suppressed.
+
+```{r, results='hide'}
+full_mdl   <- lm(mpg ~ ., data = mtcars)
+best_mdl <- step(full_mdl, direction = "both")
+
+```
+```{r}
+coef(best_mdl)
+```
+
+Now the effect of manual transmission `am1` is to raise fuel economy by only 1.8 mpg (if all other variables are held constant) - but the p-value is too high to be significant.
+
+The Adjusted R-squared value is 0.8401, which means about 84% of the variance is now explained by the selected variables in the best model.
+
+We now compare the two models to see if adding the confounder variables make any difference.  Our null hypothesis is that they do not contribute to the accuracy of the model.
+
+
+```{r}
+anova(base_mdl, best_mdl)[2,6]
+```
+
+With the highly significant p-value we can **reject null hypothesis** that the confounder variables `cyl`, `wt` and `hp` do not contribute to the accuracy of the model.
+
+
+## Appendices
+
+Full markdown code available on Github  
+https://github.com/ZedLeb/RegressionModelling
+
+### Appendix 1: Exploratory box
+```{r}
+
+p <- ggplot(mtcars, aes(x=am, y=mpg, fill = am)) + 
+  geom_boxplot() +
+  labs(x = "Transmission", title = "MPG and transmission") +
+  scale_x_discrete(labels=element_blank()) +
+  scale_fill_discrete(name="Transmission", 
+                      breaks=c(0,1),
+                      labels=c("Automatic","Manual"))
+  
+p
+
+```
+\pagebreak 
+
+### Appendix 2: Exploratory pairs
+
+**NB** Legends avoided for clarity - but automatic transmission is **blue** and manual is **red**
+```{r, warning=FALSE, message=FALSE, fig.height= 6, fig.width= 6}
+library(GGally)
+ggpairs(mtcars, mapping = aes(color = am), 
+                columns = c("mpg", "cyl", "disp", "wt"),
+                  #upper = "blank",
+                  #diag = NULL, 
+             legends=F) 
+
+
+```
+\pagebreak 
+
+### Appendix 3: Residual plots  
+The residuals appear randomly distributed. The normal Q-Q plot indicates the model meets normal distribution. Scale-Location graph  shows constant variance.
+
+```{r, fig.height= 6, fig.width= 6}
+par(mfrow=c(2,2))
+plot(best_mdl,pch=16)
+```
+
